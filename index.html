@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Star Catcher</title>
+<style>
+  body {
+    margin: 0;
+    background: #0a0a12;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #00ffcc;
+    overflow: hidden;
+  }
+  h1 {
+    text-shadow: 0 0 10px #00ffcc, 0 0 20px #00ffcc;
+    margin-bottom: 10px;
+  }
+  #gameCanvas {
+    border: 2px solid #00ffcc;
+    box-shadow: 0 0 20px #00ffcc, inset 0 0 20px rgba(0,255,204,0.2);
+    background: linear-gradient(180deg, #0a0a12 0%, #1a0a2a 100%);
+    cursor: none;
+  }
+  #ui {
+    margin-top: 15px;
+    font-size: 1.2em;
+    text-align: center;
+  }
+  #score, #lives, #highscore {
+    display: inline-block;
+    margin: 0 15px;
+    text-shadow: 0 0 5px currentColor;
+  }
+  #message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 2em;
+    text-align: center;
+    background: rgba(0,0,0,0.7);
+    padding: 20px 40px;
+    border: 2px solid #00ffcc;
+    border-radius: 10px;
+    display: none;
+    text-shadow: 0 0 10px #00ffcc;
+  }
+  button {
+    margin-top: 10px;
+    padding: 10px 20px;
+    font-size: 1em;
+    background: #00ffcc;
+    color: #0a0a12;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  button:hover {
+    box-shadow: 0 0 10px #00ffcc;
+  }
+</style>
+</head>
+<body>
+<h1>✨ Neon Star Catcher ✨</h1>
+<canvas id="gameCanvas" width="800" height="500"></canvas>
+<div id="ui">
+  <span id="score">Score: 0</span>
+  <span id="lives">Lives: 3</span>
+  <span id="highscore">High: 0</span>
+</div>
+<div id="message">
+  <div id="msgText"></div>
+  <button id="restartBtn">Play Again</button>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const livesEl = document.getElementById('lives');
+const highEl = document.getElementById('highscore');
+const messageEl = document.getElementById('message');
+const msgText = document.getElementById('msgText');
+const restartBtn = document.getElementById('restartBtn');
+
+let player = { x: 400, y: 450, width: 80, height: 20, speed: 8 };
+let stars = [];
+let bombs = [];
+let score = 0;
+let lives = 3;
+let highScore = localStorage.getItem('starCatcherHigh') || 0;
+let gameOver = false;
+let spawnTimer = 0;
+let gameSpeed = 2;
+let particles = [];
+
+highEl.textContent = `High: ${highScore}`;
+
+function spawnStar() {
+  stars.push({
+    x: Math.random() * (canvas.width - 30),
+    y: -20,
+    size: 15 + Math.random() * 10,
+    speed: gameSpeed + Math.random() * 2,
+    color: `hsl(${40 + Math.random()*20}, 100%, 60%)`
+  });
+}
+
+function spawnBomb() {
+  bombs.push({
+    x: Math.random() * (canvas.width - 30),
+    y: -20,
+    size: 18,
+    speed: gameSpeed + 1,
+    color: '#ff3366'
+  });
+}
+
+function createParticles(x, y, color) {
+  for (let i = 0; i < 12; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 8,
+      vy: (Math.random() - 0.5) * 8,
+      life: 30,
+      color
+    });
+  }
+}
+
+function update() {
+  if (gameOver) return;
+
+  spawnTimer++;
+  if (spawnTimer % 40 === 0) spawnStar();
+  if (spawnTimer % 90 === 0 && Math.random() > 0.4) spawnBomb();
+
+  if (score > 0 && score % 50 === 0) {
+    gameSpeed = Math.min(gameSpeed + 0.05, 8);
+  }
+
+  for (let i = stars.length - 1; i >= 0; i--) {
+    const s = stars[i];
+    s.y += s.speed;
+    if (s.y > canvas.height) {
+      stars.splice(i, 1);
+      lives--;
+      livesEl.textContent = `Lives: ${lives}`;
+      if (lives <= 0) endGame();
+    } else if (collides(player, s)) {
+      score += 10;
+      scoreEl.textContent = `Score: ${score}`;
+      createParticles(s.x + s.size/2, s.y + s.size/2, '#ffff00');
+      stars.splice(i, 1);
+    }
+  }
+
+  for (let i = bombs.length - 1; i >= 0; i--) {
+    const b = bombs[i];
+    b.y += b.speed;
+    if (b.y > canvas.height) {
+      bombs.splice(i, 1);
+    } else if (collides(player, b)) {
+      lives--;
+      livesEl.textContent = `Lives: ${lives}`;
+      createParticles(b.x + b.size/2, b.y + b.size/2, '#ff3366');
+      bombs.splice(i, 1);
+      if (lives <= 0) endGame();
+    }
+  }
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function collides(a, b) {
+  return a.x < b.x + b.size &&
+         a.x + a.width > b.x &&
+         a.y < b.y + b.size &&
+         a.y + a.height > b.y;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = '#00ffcc';
+  ctx.fillStyle = '#00ffcc';
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+  ctx.restore();
+
+  stars.forEach(s => {
+    ctx.save();
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = s.color;
+    ctx.fillStyle = s.color;
+    ctx.beginPath();
+    const cx = s.x + s.size/2;
+    const cy = s.y + s.size/2;
+    const spikes = 5;
+    const outer = s.size/2;
+    const inner = outer * 0.4;
+    ctx.moveTo(cx, cy - outer);
+    for (let i = 0; i < spikes; i++) {
+      ctx.lineTo(cx + Math.sin(i * 2 * Math.PI / spikes) * outer, cy - Math.cos(i * 2 * Math.PI / spikes) * outer);
+      ctx.lineTo(cx + Math.sin((i + 0.5) * 2 * Math.PI / spikes) * inner, cy - Math.cos((i + 0.5) * 2 * Math.PI / spikes) * inner);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
+
+  bombs.forEach(b => {
+    ctx.save();
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = b.color;
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.arc(b.x + b.size/2, b.y + b.size/2, b.size/2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '14px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('💣', b.x + b.size/2, b.y + b.size/2 + 5);
+    ctx.restore();
+  });
+
+  particles.forEach(p => {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life / 30;
+    ctx.fillRect(p.x, p.y, 3, 3);
+    ctx.globalAlpha = 1;
+  });
+}
+
+function gameLoop() {
+  update();
+  draw();
+  if (!gameOver) requestAnimationFrame(gameLoop);
+}
+
+function endGame() {
+  gameOver = true;
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem('starCatcherHigh', highScore);
+    highEl.textContent = `High: ${highScore}`;
+  }
+  msgText.innerHTML = `Game Over!<br>Score: ${score}<br>High: ${highScore}`;
+  messageEl.style.display = 'block';
+}
+
+function restart() {
+  score = 0;
+  lives = 3;
+  gameSpeed = 2;
+  stars = [];
+  bombs = [];
+  particles = [];
+  spawnTimer = 0;
+  gameOver = false;
+  player.x = 360;
+  scoreEl.textContent = 'Score: 0';
+  livesEl.textContent = 'Lives: 3';
+  messageEl.style.display = 'none';
+  gameLoop();
+}
+
+document.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  let mx = e.clientX - rect.left;
+  player.x = Math.max(0, Math.min(canvas.width - player.width, mx - player.width/2));
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'a') {
+    player.x = Math.max(0, player.x - player.speed * 2);
+  }
+  if (e.key === 'ArrowRight' || e.key === 'd') {
+    player.x = Math.min(canvas.width - player.width, player.x + player.speed * 2);
+  }
+});
+
+restartBtn.addEventListener('click', restart);
+
+restart();
+</script>
+</body>
+</html>
